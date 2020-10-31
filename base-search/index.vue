@@ -1,42 +1,60 @@
 <template>
   <div class="handle-box">
+    <div v-if="showQ" class="flex aic">
+      <div class="f1">
+        <el-input
+          v-model="searchForm.q"
+          :placeholder="placeholder"
+          class="search-style mr20"
+          @keyup.enter.native="handleSearch"
+        >
+          <el-button slot="append" icon="el-icon-search" @click="handleSearch">快速搜索</el-button>
+        </el-input>
+      </div>
+      <div style="width: 100px;" class="tac">
+        <el-link :underline="false" @click="moreOparation = !moreOparation">
+          更多筛选
+          <i :class="moreOparation ? 'el-icon-caret-top': 'el-icon-caret-bottom'" />
+        </el-link>
+      </div>
+    </div>
     <transition name="fade-top">
-      <div class="mt20">
+      <div v-show="moreOparation && showQ" class="mt20">
         <el-form inline :rules="rules">
           <el-form-item
             v-for="item in condition"
             :key="item.label"
             :rules="item.rules"
-            :label="item.label"
+            :label="item.label "
             :aria-disabled="true"
           >
             <el-input
               v-if="item.type === 'text'"
-              v-model="searchForm[item.valueName]"
+              v-model="searchData[item.valueName]"
               :disabled="item.disabled"
               type="text"
               :maxlength="item.maxlength"
-              :placeholder="item.placeholder"
+              :placeholder="item.placeholder || '请输入' + item.label"
               @change="handleEventFun(item.handleChange)"
               @input="handleEventFun(item.handleInput)"
               @clear="handleEventFun(item.handleClear)"
             />
             <el-input
-              v-if="item.type === 'number'"
-              v-model="searchForm[item.valueName]"
+              v-if="item.type === 'phone'"
+              v-model="searchData[item.valueName]"
               :disabled="item.disabled"
-              type="number"
+              type="phone"
               :maxlength="item.maxlength"
-              :placeholder="item.placeholder"
+              :placeholder="item.placeholder || '请输入' + item.label"
               @change="handleEventFun(item.handleChange)"
               @input="handleEventFun(item.handleInput)"
               @clear="handleEventFun(item.handleClear)"
             />
             <el-select
               v-if="item.type === 'select'"
-              v-model="searchForm[item.valueName]"
+              v-model="searchData[item.valueName]"
               :disabled="item.disabled"
-              :placeholder="item.placeholder"
+              :placeholder="item.placeholder || '请选择'"
               clearable
               @change="val => handleSelectChange(val, item.handleChange)"
             >
@@ -49,9 +67,9 @@
             </el-select>
             <el-select
               v-if="item.type === 'payMethod'"
-              v-model="searchForm[item.valueName]"
+              v-model="searchData[item.valueName]"
               :disabled="item.disabled"
-              :placeholder="item.placeholder"
+              :placeholder="item.placeholder || '请选择'"
               clearable
               @change="val => handleSelectChange(val, item.handleChange)"
             >
@@ -64,7 +82,7 @@
             </el-select>
             <el-date-picker
               v-if="item.type === 'timepicker-default' || item.type === 'timepicker'"
-              v-model="searchForm[item.valueName]"
+              v-model="searchData[item.valueName]"
               type="daterange"
               value-format="yyyy-MM-dd"
               range-separator="至"
@@ -117,6 +135,11 @@ const defaultSelectList = {
 export default {
   mixins: [pickerOptions],
   props: {
+    // 是否显示快捷搜索栏
+    showQ: {
+      type: Boolean,
+      default: false
+    },
     // 筛选条件
     condition: {
       type: Array,
@@ -140,6 +163,7 @@ export default {
   },
   data() {
     return {
+      moreOparation: false, // 是否显示细节搜索
       auditedTempTime: {}, // 用于保存时间段的数组（原始类型数据）
       defaultSelectList: defaultSelectList // 默认搜索栏中的的常用下拉列表数据（ 引用规则：未设置下拉列表数据）
     }
