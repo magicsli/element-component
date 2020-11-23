@@ -3,7 +3,7 @@
     <div v-if="showQ" class="flex aic">
       <div class="f1">
         <el-input
-          v-model="searchForm.q"
+          v-model.trim="searchForm.q"
           :placeholder="placeholder"
           class="search-style mr20"
           @keyup.enter.native="handleSearch"
@@ -19,36 +19,36 @@
       </div>
     </div>
     <transition name="fade-top">
-      <div v-show="moreOparation && showQ" class="mt20">
-        <el-form inline :rules="rules">
+      <div v-show="moreOparation || !showQ" class="mt20">
+        <el-form inline :label-width="labelWidth">
           <el-form-item
             v-for="item in condition"
             :key="item.label"
-            :rules="item.rules"
-            :label="item.label "
+            :label="item.label"
+            :label-width="item.labelWidth"
             :aria-disabled="true"
           >
             <el-input
               v-if="item.type === 'text'"
-              v-model="searchData[item.valueName]"
+              v-model.trim="searchData[item.valueName]"
               :disabled="item.disabled"
               type="text"
               :maxlength="item.maxlength"
               :placeholder="item.placeholder || '请输入' + item.label"
-              @change="handleEventFun(item.handleChange)"
-              @input="handleEventFun(item.handleInput)"
-              @clear="handleEventFun(item.handleClear)"
+              @change="handleEventFun($event, item.handleChange)"
+              @input="handleEventFun($event, item.handleInput)"
+              @clear="handleEventFun($event, item.handleClear)"
             />
             <el-input
-              v-if="item.type === 'phone'"
-              v-model="searchData[item.valueName]"
+              v-if="item.type === 'number'"
+              v-model.trim="searchData[item.valueName]"
               :disabled="item.disabled"
-              type="phone"
+              type="text"
               :maxlength="item.maxlength"
               :placeholder="item.placeholder || '请输入' + item.label"
-              @change="handleEventFun(item.handleChange)"
-              @input="handleEventFun(item.handleInput)"
-              @clear="handleEventFun(item.handleClear)"
+              @change="handleEventFun($event, item.handleChange)"
+              @input="item.handleInput ? handleEventFun($event, item.handleInput) : searchData[item.valueName] = searchData[item.valueName].replace(/[^\d]/g,'')"
+              @clear="handleEventFun($event, item.handleClear)"
             />
             <el-select
               v-if="item.type === 'select'"
@@ -66,7 +66,7 @@
               />
             </el-select>
             <el-select
-              v-if="item.type === 'payMethod'"
+              v-if="item.type === 'default'"
               v-model="searchData[item.valueName]"
               :disabled="item.disabled"
               :placeholder="item.placeholder || '请选择'"
@@ -74,7 +74,7 @@
               @change="val => handleSelectChange(val, item.handleChange)"
             >
               <el-option
-                v-for="selectitem in defaultSelectList.payMethod"
+                v-for="selectitem in defaultSelectList[item.defaultType]"
                 :key="selectitem.key"
                 :value="selectitem.key"
                 :label="selectitem.value"
@@ -104,6 +104,30 @@
               align="right"
               @change="val => handleCustomChangeTime(item.valueName, val, item.pickerType, item.handleChange)"
             />
+            <div v-if="item.type === 'section'" class="section flex">
+              <el-input
+                v-model.trim="searchData[item.valueName + '_min']"
+                :disabled="item.disabled"
+                type="text"
+                :maxlength="item.maxlength"
+                placeholder="最小值"
+                @change="handleSectionFun($event, item.valueName, item.handleChange, item.changeRule)"
+                @input="item.handleInput ? handleEventFun($event, item.handleInput) :searchData[item.valueName + '_min'] =searchData[item.valueName + '_min'].replace(/[^\d]/g,'')"
+                @clear="handleEventFun($event, item.handleClear)"
+              />
+              <span class="ml15 mr15">至</span>
+              <el-input
+                v-model.trim="searchData[item.valueName + '_max']"
+                :disabled="item.disabled"
+                type="text"
+                :maxlength="item.maxlength"
+                :min="searchData[item.valueName + '_min']"
+                placeholder="最大值"
+                @change="handleSectionFun($event, item.valueName, item.handleChange, item.changeRule)"
+                @input="item.handleInput ? handleEventFun($event, item.handleInput) :searchData[item.valueName + '_max'] =searchData[item.valueName + '_max'].replace(/[^\d]/g,'')"
+                @clear="handleEventFun($event, item.handleClear)"
+              />
+            </div>
           </el-form-item>
           <slot />
         </el-form>
@@ -123,6 +147,7 @@ const defaultSelectList = {
     { key: 3, value: '余额支付' },
     { key: 10, value: '银行转账' }
   ],
+
   serveName: [
     { key: 1, value: '全部' },
     { key: 2, value: '商家vip' },
@@ -131,7 +156,15 @@ const defaultSelectList = {
     { key: 10, value: '推广升级' }
   ]
 }
-
+/**
+ * @props options:
+ *    - condition 核心属性：用于设置需要添加的搜索条件
+ *    - searchForm 核心属性：绑定与整个from的数据
+ *    - placeholder 快捷搜索栏的提示文案
+ *    - showQ 是否显示快捷搜索栏（保留前版本风格）
+ *    - rules 全局form规则
+ *    - labelWidth  label宽度
+ */
 export default {
   mixins: [pickerOptions],
   props: {
@@ -140,25 +173,42 @@ export default {
       type: Boolean,
       default: false
     },
+    labelWidth: {
+      type: String,
+      default: ''
+    },
     // 筛选条件
     condition: {
       type: Array,
-      default: () => []
+      default: () => [],
+      required: true,
+      validator(value) {
+        const must = ['type', 'valueName']
+        // 判断是否拥有未设置必传值的item,
+        const isNoType = !value.find(item => {
+          // 循环判断每一个item中是否全部包含需要的必传属性
+          let res = false
+          must.forEach(mustItem => {
+            if (!item[mustItem]) {
+              console.error('base-search组件中缺少' + must.join(', ') + '必传属性')
+              res = true
+            }
+          })
+          return res
+        })
+        return isNoType
+      }
     },
     // 顶部搜索栏提示
     placeholder: {
       type: String,
       default: '请输入关键字搜索'
     },
-    // 全局搜索规则（-- 参考element表单验证规则）
-    rules: {
-      type: Object,
-      default: () => ({})
-    },
     // 搜索表单数据
     searchForm: {
       type: Object,
-      default: () => {}
+      default: () => {},
+      required: true
     }
   },
   data() {
@@ -179,15 +229,15 @@ export default {
     }
   },
   methods: {
-    // 空函数， 减少内存消耗
-    emptyFunction() {},
+
     /**
      * 事件处理，设置函数式的事件处理函数
+     * @param {event} event 事件对象
      * @param {function} eventFun 事件处理函数
      */
-    handleEventFun(eventFun) {
-      // 修改日志：使用返回函数来使eventFun正常接收onChange所携带的参数； - 2020/10/21
-      return typeof eventFun === 'function' ? eventFun : this.emptyFunction
+    handleEventFun($event, eventFun) {
+      /*  2020/11/23  -直接携带其参数进行判断触发；*/
+      typeof eventFun === 'function' && eventFun($event)
     },
     /**
      * 自定义切换时间段组件
@@ -207,8 +257,8 @@ export default {
       } else {
         this.searchForm[valueName] = ''
       }
-      // 不适用上列handleEventFun判断函数， 减少函数调用（内存消耗）
-      typeof callback === 'function' && callback(val)
+      // 自定义change回调
+      this.handleEventFun(val, callback)
     },
     /**
      * 默认切换时间段组件
@@ -224,7 +274,9 @@ export default {
         this.searchForm[valueName + '_start_time'] = ''
         this.searchForm[valueName + '_end_time'] = ''
       }
-      typeof callback === 'function' && callback(val)
+
+      // 自定义change回调
+      this.handleEventFun(val, callback)
     },
     /**
      * 下拉列表发生变化
@@ -232,8 +284,32 @@ export default {
      * @param {function} callback change的回调函数
      */
     handleSelectChange(val = '', callback) {
-      typeof callback === 'function' && callback(val)
-      this.handleSearch()
+      this.handleEventFun(val, callback)
+
+      // 经过参考， 不需要在下拉框修改时进行search操作 - 2020/11/23
+      // this.handleSearch()
+    },
+    /**
+     * 下拉列表发生变化
+     * @param {event} event input事件对象
+     * @param {string} valueName 需要自定义修正的键名
+     * @param {function} callback change的回调函数
+     * @param {string} changeRule 最小值和最大值的连接符 “ 2_3 ” 即最小2, 最大30 默认 " _ "
+     */
+    handleSectionFun(event, valueName, callback, changeRule = '_') {
+      /*
+        if (  this.searchData[valueName + '_min'] > this.searchData[valueName + '_max']) {
+          // 如果min大于max， 则提醒用户并清除max的值让用户重新输入
+          this.$message.warning("最大值不能小于最小值")
+          this.searchData[valueName + '_max'] = '';
+          this.searchData[valueName] = this.searchData[valueName + '_min'] + changeRule + ''
+          return
+        }
+      */
+      this.searchData[valueName] = this.searchData[valueName + '_min'] + changeRule + this.searchData[valueName + '_max']
+
+      // 自定义change回调
+      this.handleEventFun(this.searchData[valueName], callback)
     },
     // 搜索操作
     handleSearch() {
